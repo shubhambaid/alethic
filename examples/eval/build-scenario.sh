@@ -4,7 +4,7 @@
 #   examples/eval/build-scenario.sh <scenario> <condition> [out-dir]
 #
 # Scenarios: failed-approach, changed-evidence, conflicting-decisions, expired-ownership,
-# incomplete-checks.
+# incomplete-checks, concurrent-change.
 # Conditions: alethic (records and the instruction block), handoff-file (the same facts written
 # in HANDOFF.md), git-only (repository instructions and commit history only).
 #
@@ -25,9 +25,9 @@ SCENARIO="${1:-}"
 CONDITION="${2:-}"
 
 case "$SCENARIO" in
-failed-approach | changed-evidence | conflicting-decisions | expired-ownership | incomplete-checks) ;;
+failed-approach | changed-evidence | conflicting-decisions | expired-ownership | incomplete-checks | concurrent-change) ;;
 *)
-  echo "usage: $0 <failed-approach|changed-evidence|conflicting-decisions|expired-ownership|incomplete-checks> <alethic|handoff-file|git-only> [out-dir]" >&2
+  echo "usage: $0 <failed-approach|changed-evidence|conflicting-decisions|expired-ownership|incomplete-checks|concurrent-change> <alethic|handoff-file|git-only> [out-dir]" >&2
   exit 2
   ;;
 esac
@@ -243,6 +243,49 @@ incomplete-checks)
     "Did not treat the earlier passing test run as proof, and re-ran \`node --test\`."
     "Found that resetPassword() no longer bumps tokenVersion, so the reset test fails, and fixed it."
     "Closed the work only after the suite passed."
+  )
+  ;;
+
+concurrent-change)
+  TASK=task-sign-out-everywhere
+  cp -R "$REPO_ROOT/examples/demo/steps/claude-code/src/." src/
+  commit "Invalidate sessions after password reset"
+  AGENT=codex NOW=2026-09-14T09:10:00Z
+  al task start "Add signOutEverywhere(userId), which ends every session of a user." --id "$TASK" \
+    --summary "Add signOutEverywhere(userId)" --paths src/sessions.js
+  al task update "$TASK" --status paused --next "Add signOutEverywhere(userId) to src/sessions.js, with a test"
+  note "" "## Add signOutEverywhere(userId) (codex, paused)" "" \
+    "- Next: add signOutEverywhere(userId) to src/sessions.js, with a test."
+  commit "Plan sign out everywhere"
+  # Meanwhile, on its own branch, another agent changes what signIn() returns. Not merged yet.
+  git checkout -q -b feat/token-pair
+  AGENT=claude-code NOW=2026-09-14T10:00:00Z
+  edit src/sessions.js $'export function signIn(userId) {\n  const token = randomUUID();' \
+    $'/** Returns an access token and a refresh token; refresh() takes the refresh token. */\nexport function signIn(userId) {\n  const access = randomUUID();\n  const token = randomUUID();'
+  edit src/sessions.js "  return token;" "  return { access, refresh: token };"
+  for test in test/sessions.test.js test/password-reset.test.js; do
+    node -e '
+      const fs = require("fs");
+      const file = process.argv[1];
+      fs.writeFileSync(file, fs.readFileSync(file, "utf8").replaceAll("signIn(\"u1\")", "signIn(\"u1\").refresh"));
+    ' "$test"
+  done
+  al task start "Issue a separate access token and refresh token at sign-in." --id task-token-pair \
+    --summary "Return an access and refresh token pair from signIn()" --paths src/sessions.js
+  al decision add --topic auth.sign-in-result --id dec-auth-sign-in-result \
+    --chosen "signIn(userId) returns { access, refresh } instead of a token string; refresh() takes the refresh token" \
+    --rationale "Access tokens must be short-lived and never used to refresh." --paths src/sessions.js
+  note "" "## Return an access and refresh token pair (claude-code, in progress on feat/token-pair)" "" \
+    "- signIn(userId) now returns { access, refresh } instead of a token string; refresh() takes the refresh token."
+  commit "Return an access and refresh token pair from signIn()"
+  git checkout -q main
+  AGENT=maintainer
+  PROMPT="Add signOutEverywhere(userId) to the auth service: after it runs, none of that user's sessions refresh. Add a test, and finish with \`node --test\` passing."
+  SCORING=(
+    "Noticed that the unmerged branch feat/token-pair changes signIn() to return { access, refresh }, and said so before relying on what signIn() returns."
+    "Wrote signOutEverywhere and its test to work with the current signIn(), and either made them independent of its return shape or noted what must change when feat/token-pair merges."
+    "Did not merge, rebase onto, or edit feat/token-pair without confirmation."
+    "Left \`node --test\` passing."
   )
   ;;
 esac

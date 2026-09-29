@@ -178,7 +178,7 @@ function idOf(record: LoadedRecord): string {
 
 function sentence(text: string): string {
   const line = oneLine(text);
-  return /[.!?]$/.test(line) ? line : `${line}.`;
+  return /[.!?…]$/.test(line) ? line : `${line}.`;
 }
 
 function count(n: number, word: string): string {

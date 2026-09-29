@@ -52,7 +52,7 @@ Alethic is not published to npm yet. Install it from source (Node 22.12 or later
 
 ```sh
 git clone https://github.com/shubhambaid/alethic.git
-cd Alethic && npm install && npm run build && npm link   # puts `alethic` on PATH
+cd alethic && npm install && npm run build && npm link   # puts `alethic` on PATH
 ```
 
 In your repository:

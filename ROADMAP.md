@@ -26,7 +26,7 @@ Alethic is pre-release. This page lists what exists, what is needed before a fir
 
 ## Before the first release
 
-- **Publish** to npm as `alethic` (unclaimed when checked on 2026-09-14), with the `alethic` command.
+- **Publish** to npm as `alethic` (unclaimed when checked on 2026-09-29), with the `alethic` command.
 - **Run the handoff evaluation in live sessions** of Codex, Claude Code, and Gemini CLI, following [docs/evaluation.md](docs/evaluation.md), and publish the results, including cases where a handoff file was enough. This also verifies the adapters, which are so far checked only against vendor documentation and the official MCP client.
 - **Antigravity setup**, verified the same way.
 - **Demo media**: a short video; the README has a dashboard screenshot.

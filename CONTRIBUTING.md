@@ -8,7 +8,7 @@ You need Node 22.12 or later and Git.
 
 ```sh
 git clone https://github.com/shubhambaid/alethic.git
-cd Alethic
+cd alethic
 npm install
 npm test
 ```

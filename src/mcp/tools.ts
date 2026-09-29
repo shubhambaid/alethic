@@ -111,10 +111,16 @@ export const TOOLS: readonly ToolSpec[] = [
   {
     name: "status",
     title: "Repository and task status",
-    description: "Git state, active tasks with lease owners, latest checkpoints, and validation.",
-    inputSchema: object({}),
+    description:
+      "Git state, active tasks with lease owners, latest checkpoints, and validation. With all_branches, also tasks, decisions, and changed files on other local branches and worktrees since they split from this one.",
+    inputSchema: object({
+      all_branches: {
+        type: "boolean",
+        description: "include work on other local branches and worktrees",
+      },
+    }),
     annotations: READ,
-    argv: async () => ["status", "--json"],
+    argv: async (a) => ["status", "--json", ...(a.all_branches === true ? ["--all-branches"] : [])],
   },
   {
     name: "validate",

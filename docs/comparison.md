@@ -2,15 +2,15 @@
 
 Alethic sits between things teams already use. It replaces none of them. This page describes categories of tools, not specific products, because features change quickly.
 
-| | Survives a switch to another agent | Reviewed in pull requests | Tied to a code version | Flags when code changes | Structured for handoff |
-|---|---|---|---|---|---|
-| Chat transcripts and session resume | No | No | No | No | No |
-| An agent's private memory | No | Usually not | No | No | No |
-| Shared memory servers (via MCP or plugins) | Yes | Usually not | Rarely | Rarely | Partly |
-| Instruction files (`AGENTS.md`, …) | Partly | Yes | No | No | No |
-| Architecture decision records | Yes | Yes | Loosely | No | No |
-| Issue trackers and PR descriptions | Yes | Partly | Loosely | No | Partly |
-| **Alethic** | **Yes** | **Yes** | **Yes** | **Yes** | **Yes** |
+| | Survives a switch to another agent | Reviewed in pull requests | Tied to a code version | Flags when code changes | Structured for handoff | Sees parallel work on other branches |
+|---|---|---|---|---|---|---|
+| Chat transcripts and session resume | No | No | No | No | No | No |
+| An agent's private memory | No | Usually not | No | No | No | No |
+| Shared memory servers (via MCP or plugins) | Yes | Usually not | Rarely | Rarely | Partly | Partly, not by branch |
+| Instruction files (`AGENTS.md`, …) | Partly | Yes | No | No | No | No |
+| Architecture decision records | Yes | Yes | Loosely | No | No | No |
+| Issue trackers and PR descriptions | Yes | Partly | Loosely | No | Partly | Once a PR is open |
+| **Alethic** | **Yes** | **Yes** | **Yes** | **Yes** | **Yes** | **Yes, locally** |
 
 ## Chat transcripts and session resume
 
@@ -30,7 +30,7 @@ A growing category of tools gives several agents one memory: a local service or 
 
 The differences are where the memory lives and what it is checked against. It is usually kept in the service's own store rather than in the repository, so it is not reviewed in pull requests and does not branch or merge with the code. Retrieval is by relevance, and the memory is rarely tied to the code version it described, so nothing flags a memory whose code has since changed.
 
-Alethic is a smaller, stricter thing: a few record types, committed with the code, validated before use, anchored to content fingerprints, and compiled deterministically. It does not search or summarize. A team can use both: a memory server for recall across a person's sessions, and Alethic for the task state that should travel with the branch.
+Alethic is a smaller, stricter thing: a few record types, committed with the code, validated before use, anchored to content fingerprints, and compiled deterministically. Because its records live on branches, it can also tell an agent what other worktrees and branches of the same clone changed or recorded in its task's scope since they split (spec §12.1), which a store outside the repository cannot place on a line of history. It does not search or summarize. A team can use both: a memory server for recall across a person's sessions, and Alethic for the task state that should travel with the branch.
 
 ## Instruction files
 

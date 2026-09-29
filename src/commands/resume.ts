@@ -1,6 +1,7 @@
 import {
   buildBriefing,
   type CheckpointRelation,
+  type ConcurrentNote,
   type IntegrityNotes,
   TARGETS,
   type Target,
@@ -27,6 +28,11 @@ import {
   resolveCommit,
   shortSha,
 } from "../git/git.js";
+import {
+  gatherConcurrentWork,
+  type RelevantWork,
+  relevantConcurrentWork,
+} from "../trust/concurrent.js";
 import { createOverlapCheck, findContradictionPairs } from "../trust/conflicts.js";
 import { assessReceipt, createReceiptContext } from "../trust/receipts.js";
 import { assessStaleness, createStalenessContext } from "../trust/staleness.js";
@@ -45,12 +51,17 @@ export interface ResumeOptions {
   budget?: string;
   format?: string;
   agent?: string;
+  /** False with `--no-concurrent`: leave out work on other branches and worktrees. */
+  concurrent?: boolean;
 }
 
 const OPEN_STATUSES = new Set(["active", "paused", "blocked", "proposed"]);
 
 /** Everything known about a task and its related records, ranked, before rendering. */
 export interface PreparedTask {
+  root: string;
+  /** The shared assessment the task and its records were read through. */
+  ledger: LedgerAssessment;
   manifest: Manifest;
   git: GitState;
   task: LoadedRecord;
@@ -103,6 +114,8 @@ export async function prepareTask(
 
   const latest = collected.checkpoints[0];
   return {
+    root,
+    ledger,
     manifest,
     git,
     task,
@@ -129,6 +142,15 @@ export async function resumeCommand(io: Io, options: ResumeOptions): Promise<num
 
   const prepared = await prepareTask(io, options);
   const budget = budgetFlag ?? prepared.manifest.defaults.budget;
+  const concurrent =
+    options.concurrent === false
+      ? []
+      : await relevantConcurrentWork(
+          prepared.root,
+          await gatherConcurrentWork(prepared.root, prepared.ledger),
+          prepared.task,
+          prepared.manifest.limits.max_glob_matches,
+        );
   const briefing = buildBriefing({
     target: target as Target,
     budget,
@@ -140,6 +162,7 @@ export async function resumeCommand(io: Io, options: ResumeOptions): Promise<num
     scopePaths: prepared.scopePaths,
     records: prepared.records,
     integrity: prepared.integrity,
+    concurrent: concurrent.map(concurrentNote),
   });
 
   if (format === "json") {
@@ -152,6 +175,21 @@ export async function resumeCommand(io: Io, options: ResumeOptions): Promise<num
       report: briefing.report,
       sections: briefing.sections,
       skipped: prepared.skipped,
+      concurrent: concurrent.map(({ source, paths, records }) => ({
+        source: source.name,
+        ...(source.branch ? { branch: source.branch } : {}),
+        ...(source.worktreePath ? { worktree: source.worktreePath } : {}),
+        ...(source.committedAt ? { committedAt: source.committedAt } : {}),
+        base: source.base,
+        uncommitted: source.uncommitted,
+        paths,
+        records: records.map((entry) => ({
+          id: entry.id,
+          kind: entry.record.kind,
+          uncommitted: entry.uncommitted,
+        })),
+        withheld: source.withheld,
+      })),
     };
     io.stdout(`${JSON.stringify(output, null, 2)}\n`);
   } else {
@@ -160,10 +198,23 @@ export async function resumeCommand(io: Io, options: ResumeOptions): Promise<num
   if (briefing.overBudget) {
     const { frame, required, pointers } = briefing.report;
     io.stderr(
-      `warning: the briefing is about ${briefing.tokens} tokens, over the budget of about ${budget}. The frame and the sections that are never shortened (goal, repository state, integrity warnings, next safe action) take about ${frame + required}; everything else was reduced to pointer lines, which take about ${pointers}. Read collapsed records with \`alethic show <id>\`.\n`,
+      `warning: the briefing is about ${briefing.tokens} tokens, over the budget of about ${budget}. The frame and the sections that are never shortened (goal, repository state, integrity warnings, concurrent work, next safe action) take about ${frame + required}; everything else was reduced to pointer lines, which take about ${pointers}. Read collapsed records with \`alethic show <id>\`.\n`,
     );
   }
   return 0;
+}
+
+function concurrentNote({ source, paths, records }: RelevantWork): ConcurrentNote {
+  return {
+    source: source.name,
+    ...(source.worktreePath ? { worktree: source.worktreePath } : {}),
+    ...(source.committedAt ? { committedAt: source.committedAt } : {}),
+    base: source.base,
+    uncommitted: source.uncommitted,
+    paths,
+    records: records.map(({ record, uncommitted }) => ({ record, uncommitted })),
+    withheld: source.withheld,
+  };
 }
 
 /**

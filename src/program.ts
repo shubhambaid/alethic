@@ -97,6 +97,7 @@ export async function runCli(argv: readonly string[], io: Io): Promise<number> {
     .command("status")
     .description("Show Git state, active tasks, and validation summary")
     .option("--json", "print machine-readable status")
+    .option("--all-branches", "also list work on other local branches and worktrees")
     .action(async (options, command: Command) => {
       exitCode = await statusCommand(ioFor(command), options);
     });
@@ -352,6 +353,7 @@ export async function runCli(argv: readonly string[], io: Io): Promise<number> {
     )
     .option("--format <format>", "md or json (default: md)")
     .option("--agent <name>", "agent reading the briefing, to find its active task")
+    .option("--no-concurrent", "leave out work on other branches and worktrees")
     .action(async (options, command: Command) => {
       exitCode = await resumeCommand(ioFor(command), options);
     });
@@ -363,6 +365,7 @@ export async function runCli(argv: readonly string[], io: Io): Promise<number> {
     )
     .argument("<id>", "record id")
     .option("--json", JSON_HELP)
+    .option("--ref <branch>", "read the record from another local branch or worktree path")
     .action(async (id: string, options, command: Command) => {
       exitCode = await showCommand(ioFor(command), id, options);
     });

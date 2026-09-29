@@ -55,6 +55,10 @@ const CRITICAL: Record<string, string[]> = {
     "Export lastPasswordReset(userId)",
   ],
   "incomplete-checks": ["`node --test` passed at", "changed since"],
+  "concurrent-change": [
+    "feat/token-pair (last commit 2026-09-14) changed 1 file in your scope (src/sessions.js)",
+    "[dec-auth-sign-in-result on feat/token-pair] Decided on auth.sign-in-result: signIn(userId) returns { access, refresh } instead of a token string",
+  ],
 };
 
 describe("evaluation scenarios (scripted: what a fresh session is given)", () => {

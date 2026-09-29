@@ -52,7 +52,7 @@ const ATTENTION: ReadonlySet<DerivedStatus> = new Set([...STALE_STATUSES, "uncer
 
 /** The documented overflow policy (spec §14), repeated in the inspectable result. */
 export const BUDGET_POLICY =
-  "Goal, repository state, integrity warnings, and the next safe action are always shown in full, even over budget. Other items shrink to one-line summaries, then collapse into 'N more' lines that cite at most five records each; every item stays listed here and readable with `alethic show <id>`.";
+  "Goal, repository state, integrity warnings, concurrent work on other branches (capped), and the next safe action are always shown in full, even over budget. Other items shrink to one-line summaries, then collapse into 'N more' lines that cite at most five records each; every item stays listed here and readable with `alethic show <id>`.";
 
 export interface CheckpointRelation {
   kind: "head" | "ahead" | "other-line" | "unavailable";
@@ -83,6 +83,42 @@ export const NO_INTEGRITY_NOTES: IntegrityNotes = {
 /** Each kind of integrity warning lists at most this many items, then one overflow line. */
 const MAX_INTEGRITY_ITEMS = 5;
 
+/**
+ * Work on another branch or worktree that touches this task (spec §12.1): changed files in its
+ * scope, and records about the scope or the task itself.
+ */
+export interface ConcurrentNote {
+  /** Branch name, or `worktree <path>` for a worktree with a detached HEAD. */
+  source: string;
+  /** Path of the worktree it is checked out in, relative to this checkout. */
+  worktree?: string;
+  /** Commit where it split from this line of history. */
+  base: string;
+  /** Whether anything in that worktree is not committed yet. */
+  uncommitted: boolean;
+  /** Committer date of its latest commit, ISO 8601, so old branches read as old. */
+  committedAt?: string;
+  /** Changed files inside the task's scope. */
+  paths: string[];
+  /** Records about the scope or the task, in display order. */
+  records: { record: LoadedRecord; uncommitted: boolean }[];
+  /** Records there that failed validation: counted, never shown. */
+  withheld: number;
+}
+
+/**
+ * Caps for the concurrent-work section, which is never shortened: at most this many sources,
+ * files named per source, record lines in the whole section, and characters per path and text.
+ */
+const MAX_CONCURRENT_SOURCES = 3;
+const MAX_CONCURRENT_FILES = 3;
+const MAX_CONCURRENT_RECORDS = 2;
+const CONCURRENT_PATH = 60;
+const CONCURRENT_TEXT = 100;
+/** Longest summary line, and longest record line apart from its citation and trust markers. */
+const CONCURRENT_LINE = 260;
+const CONCURRENT_RECORD_LINE = 200;
+
 export interface BriefingInput {
   target: Target;
   budget: number;
@@ -95,6 +131,8 @@ export interface BriefingInput {
   /** Decisions, knowledge, and receipts, ranked. */
   records: ScoredCandidate[];
   integrity?: IntegrityNotes;
+  /** Work on other branches and worktrees that touches this task, most relevant first. */
+  concurrent?: ConcurrentNote[];
 }
 
 /** Where the approximate tokens went, so overflow is attributable (spec §14). */
@@ -140,7 +178,7 @@ function idOf(record: LoadedRecord): string {
 
 function sentence(text: string): string {
   const line = oneLine(text);
-  return /[.!?]$/.test(line) ? line : `${line}.`;
+  return /[.!?…]$/.test(line) ? line : `${line}.`;
 }
 
 function count(n: number, word: string): string {
@@ -484,6 +522,7 @@ function buildSections(input: BriefingInput, taskId: string): BriefingSection[] 
     goal,
     state,
     integritySection(input.integrity),
+    concurrentSection(input.concurrent ?? [], taskId),
     decisions,
     files,
     checks,
@@ -551,6 +590,112 @@ function integritySection(notes: IntegrityNotes = NO_INTEGRITY_NOTES): BriefingS
     hideWhenEmpty: true,
     items,
   };
+}
+
+/**
+ * Concurrent work on other branches and worktrees (spec §12.1): always shown in full when there
+ * is any, because a changed interface elsewhere is the costliest thing to miss, and capped so it
+ * cannot crowd out the rest. Records here are attributed claims from unmerged work; they carry
+ * trust markers but no freshness markers, which are judged against this checkout.
+ */
+function concurrentSection(notes: readonly ConcurrentNote[], taskId: string): BriefingSection {
+  const items: BriefingItem[] = [];
+  let recordLines = MAX_CONCURRENT_RECORDS;
+  notes.slice(0, MAX_CONCURRENT_SOURCES).forEach((note, index) => {
+    const about = [
+      note.worktree ? `worktree ${note.worktree}` : "",
+      note.uncommitted ? "uncommitted changes" : "",
+      note.committedAt ? `last commit ${note.committedAt.slice(0, 10)}` : "",
+    ].filter(Boolean);
+    const shown = note.paths
+      .slice(0, MAX_CONCURRENT_FILES)
+      .map((file) => truncate(file, CONCURRENT_PATH))
+      .join(", ");
+    const extra = note.paths.length - MAX_CONCURRENT_FILES;
+    const changed =
+      note.paths.length > 0
+        ? `changed ${count(note.paths.length, "file")} in your scope (${shown}${extra > 0 ? `, and ${extra} more` : ""})`
+        : "";
+    const recorded =
+      note.records.length > 0
+        ? `recorded ${count(note.records.length, "item")} about ${note.paths.length > 0 ? "it" : "your scope or task"}`
+        : "";
+    const withheld =
+      note.withheld > 0
+        ? ` ${count(note.withheld, "record")} there failed validation and ${note.withheld === 1 ? "is" : "are"} not shown.`
+        : "";
+    const summary = `${note.source}${about.length > 0 ? ` (${about.join("; ")})` : ""} ${[changed, recorded].filter(Boolean).join(" and ")} since it split from this branch at ${note.base.slice(0, 7)}.`;
+    items.push(fixed(`concurrent:${index}`, `${truncate(summary, CONCURRENT_LINE)}${withheld}`));
+    for (const [n, { record, uncommitted }] of note.records.entries()) {
+      if (recordLines === 0) break;
+      recordLines -= 1;
+      const id = idOf(record);
+      const text = truncate(
+        `${concurrentRecordText(record, taskId)}${uncommitted ? " (uncommitted)" : ""}`,
+        CONCURRENT_RECORD_LINE,
+      );
+      items.push(
+        fixed(
+          `concurrent:${index}:${n}`,
+          `[${id} on ${note.source}] ${text}${markers(record.data, undefined, { brief: true })}`,
+          { record: id },
+        ),
+      );
+    }
+  });
+  const more = notes.length - MAX_CONCURRENT_SOURCES;
+  if (more > 0) {
+    items.push(
+      fixed(
+        "concurrent:more",
+        `${more === 1 ? "1 more branch or worktree has" : `${more} more branches or worktrees have`} work in your scope. (see \`alethic status --all-branches\`)`,
+      ),
+    );
+  }
+  if (items.length > 0) {
+    items.push(
+      fixed(
+        "concurrent:how",
+        "None of this is merged here. Check it before relying on the code it touches; read a record with `alethic show <id> --ref <branch or worktree>`.",
+      ),
+    );
+  }
+  return {
+    key: "concurrent",
+    title: "Concurrent work on other branches",
+    required: true,
+    hideWhenEmpty: true,
+    items,
+  };
+}
+
+function concurrentRecordText(record: LoadedRecord, taskId: string): string {
+  const data = record.data;
+  const clip = (text: string | undefined) => truncate(text ?? "", CONCURRENT_TEXT);
+  const by = asString(asObject(data.owner)?.agent) ?? asString(asObject(data.created_by)?.agent);
+  switch (record.kind) {
+    case "task": {
+      const next = asString(data.next_action);
+      const head =
+        idOf(record) === taskId
+          ? `Your task was also updated there: ${asString(data.status)}`
+          : `${asString(data.status)} task${by ? ` by ${by}` : ""}: ${clip(asString(data.intent) ?? asString(data.summary))}`;
+      return `${sentence(head)}${next ? ` Next: ${sentence(clip(next))}` : ""}`;
+    }
+    case "checkpoint":
+      return sentence(
+        `A checkpoint for your task${by ? ` by ${by}` : ""}, next: ${clip(asString(data.next_safe_action))}`,
+      );
+    case "decision": {
+      const status = asString(data.status);
+      const topic = asString(data.topic);
+      return sentence(
+        `${status === "accepted" ? "Decided" : `Decision (${status})`}${topic ? ` on ${topic}` : ""}: ${clip(asString(data.chosen) ?? asString(data.summary))}`,
+      );
+    }
+    default:
+      return sentence(clip(asString(data.summary)));
+  }
 }
 
 function relationText(relation: CheckpointRelation | undefined): string {

@@ -36,13 +36,13 @@ No persistent cache or index was added. Revisit if a real ledger shows either of
 
 ## Concurrent-work notices
 
-`resume` also reads other local branches and worktrees (spec §12.1). Each source costs a few short Git processes: a merge base, a diff of its record directories, and a diff of its code paths for a branch; for a worktree, three reads of its record directories' status plus its changed paths. The changed record files of every branch are read through one `git cat-file --batch` process, worktree record files are read from disk without hashing the rest of the ledger, and sources are read four at a time.
+`resume` also reads other local branches and worktrees (spec §12.1). Each source costs a few short Git processes: a merge base, a diff of its record directories, a diff of its code paths, and a diff against HEAD (to leave out work that already arrived by a squash merge or cherry-pick) for a branch; for a worktree, three reads of its record directories' status, its changed paths, and its differences from HEAD. The changed record files of every branch are read through one `git cat-file --batch` process, worktree record files are read from disk without hashing the rest of the ledger, and sources are read four at a time.
 
 Measured on 2026-09-29, Apple M4 Pro, Node v26.10.0, git 2.50.1, with the ledger above plus 25 branches (each changing one file and adding two decisions in scope) and 2 worktrees (each with one uncommitted decision and an uncommitted edit):
 
 | Ledger | `resume --no-concurrent` | `resume` | `status --all-branches` | Deterministic |
 |---|---|---|---|---|
-| 300 decisions, 27 sources | 0.35 s | 0.73 s | 0.64 s | yes |
-| 2000 decisions, 27 sources | 1.24 s | 1.73 s | 0.92 s | yes |
+| 300 decisions, 27 sources | 0.36 s | 0.82 s | 0.70 s | yes |
+| 2000 decisions, 27 sources | 0.98 s | 1.70 s | 1.01 s | yes |
 
 The cost depends on the number of sources (at most 25 branches and worktrees are examined) and on how much each changed, not on the size of the ledger. `--no-concurrent` skips it.

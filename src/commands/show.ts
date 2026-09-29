@@ -1,7 +1,10 @@
 import { digestOf } from "../core/anchor.js";
+import { UsageError } from "../core/errors.js";
 import { asString } from "../core/json.js";
 import { headCommit, isDirty } from "../git/git.js";
+import { findSource } from "../git/sources.js";
 import { confirmationState } from "../trust/claims.js";
+import { assessSource } from "../trust/concurrent.js";
 import {
   assessReceipt,
   createReceiptContext,
@@ -9,12 +12,19 @@ import {
   type ReceiptAssessment,
 } from "../trust/receipts.js";
 import { assessStaleness, createStalenessContext } from "../trust/staleness.js";
-import { assessLedger, requireManifest, requireUsable } from "../validate/assess.js";
+import {
+  assessLedger,
+  type LedgerAssessment,
+  requireManifest,
+  requireUsable,
+} from "../validate/assess.js";
 import { type Io, requireInitialized } from "./context.js";
 import { formatFinding } from "./output.js";
 
 export interface ShowOptions {
   json?: boolean;
+  /** Read the record from another local branch or worktree (spec §12.1). */
+  ref?: string;
 }
 
 /**
@@ -27,6 +37,7 @@ export async function showCommand(io: Io, id: string, options: ShowOptions): Pro
   const root = await requireInitialized(io);
   const ledger = await assessLedger(root);
   const manifest = requireManifest(ledger);
+  if (options.ref !== undefined) return showFromSource(io, root, ledger, id, options.ref, options);
   const record = requireUsable(ledger, id);
 
   const staleness = await assessStaleness(
@@ -81,6 +92,74 @@ export async function showCommand(io: Io, id: string, options: ShowOptions): Pro
     `Trust:     ${trust}`,
     ...(receipt ? [`Applies:   ${describeApplicability(receipt).full}`] : []),
     ...staleness.notes.map((note) => `Note:      ${note}`),
+    ...(findings.length > 0 ? ["", ...findings.map(formatFinding)] : []),
+    "",
+    "---",
+    record.text.trimEnd(),
+  ];
+  io.stdout(`${lines.join("\n")}\n`);
+  return 0;
+}
+
+/**
+ * A record from another branch or worktree, as a concurrent-work notice cited it. It passes the
+ * same checks, with this checkout's privacy settings. Freshness and receipt applicability are not
+ * judged: they describe this checkout's code, and the record describes another line of work.
+ */
+async function showFromSource(
+  io: Io,
+  root: string,
+  ledger: LedgerAssessment,
+  id: string,
+  ref: string,
+  options: ShowOptions,
+): Promise<number> {
+  const source = await findSource(root, ref);
+  if (!source) {
+    throw new UsageError(`--ref ${ref} is not a local branch or a worktree of this repository`);
+  }
+  const assessed = await assessSource(root, ledger, source);
+  const record = requireUsable(assessed, id);
+  const confirmation = confirmationState(record.kind, record.data);
+  const findings = [...assessed.store.findings, ...assessed.recordFindings].filter(
+    (finding) => finding.file === record.file,
+  );
+  const revision = digestOf(record.text);
+  const worktree = source.worktreePath;
+  const from = worktree ? `${source.name} (worktree ${worktree})` : source.name;
+
+  if (options.json) {
+    const output = {
+      id,
+      kind: record.kind,
+      file: record.file,
+      revision,
+      source: {
+        name: source.name,
+        ...(source.branch ? { branch: source.branch } : {}),
+        tip: source.tip,
+        ...(worktree ? { worktree } : {}),
+      },
+      record: record.data,
+      derived: { confirmation },
+      findings,
+    };
+    io.stdout(`${JSON.stringify(output, null, 2)}\n`);
+    return 0;
+  }
+
+  const trust =
+    confirmation.level === "none"
+      ? (asString(record.data.confidence) ?? "unknown")
+      : `human-confirmed by ${confirmation.name ?? "?"} (${confirmation.level}${confirmation.recordedBy ? `, recorded by ${confirmation.recordedBy}` : ""}; not authenticated)`;
+  const lines = [
+    `# ${id} (${record.kind}) on ${source.name}`,
+    "",
+    `From:      ${from}`,
+    `File:      ${record.file}`,
+    `Revision:  ${revision}`,
+    "Freshness: not judged; this record describes another line of work, not this checkout",
+    `Trust:     ${trust}`,
     ...(findings.length > 0 ? ["", ...findings.map(formatFinding)] : []),
     "",
     "---",

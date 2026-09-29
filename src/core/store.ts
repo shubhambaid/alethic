@@ -54,61 +54,79 @@ export async function loadRecords(root: string): Promise<StoreLoad> {
     }
 
     for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
-      if (entry.name === ".gitkeep") continue;
       const file = `${dir}/${entry.name}`;
-      if (!entry.isFile()) {
-        findings.push({
-          severity: "warning",
-          code: "unexpected-file",
-          file,
-          message: "Unexpected non-file entry in a record directory",
-        });
+      const skip = checkRecordEntry(file, entry.isFile());
+      if (skip === "ignore") continue;
+      if (skip) {
+        findings.push(skip);
         continue;
       }
-      if (entry.name.endsWith(".yml")) {
-        findings.push({
-          severity: "error",
-          code: "wrong-extension",
-          file,
-          message: "Record files must use the .yaml extension",
-          hint: `Rename it to ${entry.name.slice(0, -4)}.yaml.`,
-        });
-        continue;
-      }
-      if (!entry.name.endsWith(".yaml")) {
-        findings.push({
-          severity: "warning",
-          code: "unexpected-file",
-          file,
-          message: entry.name.endsWith(".lock")
-            ? "A write lock left behind by an interrupted alethic command"
-            : "Ignoring a file that is not a .yaml record",
-          ...(entry.name.endsWith(".lock")
-            ? { hint: "If no alethic command is running, delete it." }
-            : {}),
-        });
-        continue;
-      }
-
-      const text = await readFile(path.join(root, file), "utf8");
-      const parsed = parseYaml(text);
-      if (parsed.problems.length > 0) {
-        findings.push(...parsed.problems.map((problem) => yamlFinding(file, problem)));
-        continue;
-      }
-      if (!isPlainObject(parsed.data)) {
-        findings.push({
-          severity: "error",
-          code: "yaml",
-          file,
-          message: "A record must be a YAML mapping",
-        });
-        continue;
-      }
-      records.push({ file, kind, data: parsed.data, text });
+      const parsed = parseRecord(file, kind, await readFile(path.join(root, file), "utf8"));
+      if ("problems" in parsed) findings.push(...parsed.problems);
+      else records.push(parsed);
     }
   }
   return { records, findings };
+}
+
+/**
+ * Whether an entry in a record directory should be read as a record: undefined for a `.yaml`
+ * file, "ignore" for `.gitkeep`, otherwise the finding that explains why it is not a record.
+ * Shared by every way of listing records, so a record read from another branch is judged by the
+ * same rules as one in this checkout.
+ */
+export function checkRecordEntry(file: string, isFile: boolean): Finding | "ignore" | undefined {
+  const name = path.posix.basename(file);
+  if (name === ".gitkeep") return "ignore";
+  if (!isFile) {
+    return {
+      severity: "warning",
+      code: "unexpected-file",
+      file,
+      message: "Unexpected non-file entry in a record directory",
+    };
+  }
+  if (name.endsWith(".yml")) {
+    return {
+      severity: "error",
+      code: "wrong-extension",
+      file,
+      message: "Record files must use the .yaml extension",
+      hint: `Rename it to ${name.slice(0, -4)}.yaml.`,
+    };
+  }
+  if (!name.endsWith(".yaml")) {
+    return {
+      severity: "warning",
+      code: "unexpected-file",
+      file,
+      message: name.endsWith(".lock")
+        ? "A write lock left behind by an interrupted alethic command"
+        : "Ignoring a file that is not a .yaml record",
+      ...(name.endsWith(".lock") ? { hint: "If no alethic command is running, delete it." } : {}),
+    };
+  }
+  return undefined;
+}
+
+/** Parses one record file's content. Anything but a single YAML mapping becomes findings. */
+export function parseRecord(
+  file: string,
+  kind: RecordKind,
+  text: string,
+): LoadedRecord | { problems: Finding[] } {
+  const parsed = parseYaml(text);
+  if (parsed.problems.length > 0) {
+    return { problems: parsed.problems.map((problem) => yamlFinding(file, problem)) };
+  }
+  if (!isPlainObject(parsed.data)) {
+    return {
+      problems: [
+        { severity: "error", code: "yaml", file, message: "A record must be a YAML mapping" },
+      ],
+    };
+  }
+  return { file, kind, data: parsed.data, text };
 }
 
 export interface WriteOptions {

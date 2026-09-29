@@ -5,7 +5,7 @@ import { isRecordKind, KIND_DIRS, type RecordKind } from "../core/ids.js";
 import { asString } from "../core/json.js";
 import { loadManifest, MANIFEST_FILE, type Manifest, resolveManifest } from "../core/manifest.js";
 import { checkRepoPath, isGlob, scopeMatcher } from "../core/paths.js";
-import { type LoadedRecord, loadRecords } from "../core/store.js";
+import { type LoadedRecord, loadRecords, type StoreLoad } from "../core/store.js";
 import { confirmationState } from "../trust/claims.js";
 import { collectPaths, collectReferences } from "./references.js";
 import { validateAgainst } from "./schema.js";
@@ -73,31 +73,66 @@ export async function assessLedger(root: string): Promise<LedgerAssessment> {
   const manifestLoad = await loadManifest(root);
   const settings = manifestLoad.manifest ?? FALLBACK_MANIFEST;
   const store = await loadRecords(root);
-  const { records } = store;
   const secrets = compileSecretPatterns(settings.privacy.extra_secret_patterns);
+  const assessed = assessRecords(store, settings, secrets.patterns);
 
+  return {
+    root,
+    ...(manifestLoad.manifest ? { manifest: manifestLoad.manifest } : {}),
+    settings,
+    secretPatterns: secrets.patterns,
+    records: store.records,
+    findings: [
+      ...manifestLoad.findings,
+      ...store.findings,
+      ...secrets.invalid.map(
+        ({ pattern, error }): Finding => ({
+          severity: "error",
+          code: "manifest-pattern",
+          file: MANIFEST_FILE,
+          path: `privacy.extra_secret_patterns[${settings.privacy.extra_secret_patterns.indexOf(pattern)}]`,
+          message: `Invalid regular expression: ${error}`,
+        }),
+      ),
+      ...assessed.recordFindings,
+    ],
+    index: assessed.index,
+    excluded: assessed.excluded,
+    unloadable: assessed.unloadable,
+  };
+}
+
+/** The result of the shared record checks, independent of where the records were read from. */
+export interface RecordAssessment {
+  /** Record-level findings, unsorted. Loading findings stay in the store load. */
+  recordFindings: Finding[];
+  /** Usable records by id. Ids here are unique. */
+  index: Map<string, LoadedRecord>;
+  /** Records withheld from shared outputs, in file order. */
+  excluded: ExcludedRecord[];
+  /** Files that could not be loaded as records (errors only). */
+  unloadable: string[];
+}
+
+/**
+ * The checks every record passes before any output uses it, without Git or the filesystem.
+ * Records read from another branch or worktree go through this too, with this checkout's
+ * privacy settings, so a branch cannot weaken the rules that apply to what is shown here.
+ */
+export function assessRecords(
+  store: StoreLoad,
+  settings: Manifest,
+  secretPatterns: SecretPattern[],
+): RecordAssessment {
+  const { records } = store;
   const recordFindings = [
     ...checkSchemas(records),
     ...checkIdentity(records),
     ...checkReferences(records),
-    ...checkSecrets(records, secrets.patterns),
+    ...checkSecrets(records, secretPatterns),
     ...checkTrust(records, settings),
     ...checkForbiddenPaths(records, settings),
     ...checkConfirmations(records),
-  ];
-  const findings: Finding[] = [
-    ...manifestLoad.findings,
-    ...store.findings,
-    ...secrets.invalid.map(
-      ({ pattern, error }): Finding => ({
-        severity: "error",
-        code: "manifest-pattern",
-        file: MANIFEST_FILE,
-        path: `privacy.extra_secret_patterns[${settings.privacy.extra_secret_patterns.indexOf(pattern)}]`,
-        message: `Invalid regular expression: ${error}`,
-      }),
-    ),
-    ...recordFindings,
   ];
 
   const excludingByFile = new Map<string, Set<string>>();
@@ -132,12 +167,7 @@ export async function assessLedger(root: string): Promise<LedgerAssessment> {
   }
 
   return {
-    root,
-    ...(manifestLoad.manifest ? { manifest: manifestLoad.manifest } : {}),
-    settings,
-    secretPatterns: secrets.patterns,
-    records,
-    findings,
+    recordFindings,
     index,
     excluded: excluded.sort((a, b) => a.file.localeCompare(b.file)),
     unloadable: [
@@ -150,7 +180,7 @@ export async function assessLedger(root: string): Promise<LedgerAssessment> {
 
 /** Like `requireRecord`, but explains when the record exists and failed validation. */
 export function requireUsable(
-  ledger: LedgerAssessment,
+  ledger: Pick<LedgerAssessment, "index" | "excluded">,
   id: string,
   kind?: RecordKind,
   label?: string,

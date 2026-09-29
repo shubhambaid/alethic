@@ -6,6 +6,7 @@ Alethic sits between things teams already use. It replaces none of them. This pa
 |---|---|---|---|---|---|
 | Chat transcripts and session resume | No | No | No | No | No |
 | An agent's private memory | No | Usually not | No | No | No |
+| Shared memory servers (via MCP or plugins) | Yes | Usually not | Rarely | Rarely | Partly |
 | Instruction files (`AGENTS.md`, …) | Partly | Yes | No | No | No |
 | Architecture decision records | Yes | Yes | Loosely | No | No |
 | Issue trackers and PR descriptions | Yes | Partly | Loosely | No | Partly |
@@ -22,6 +23,14 @@ Alethic stores the conclusions instead: what failed and why, what was decided, w
 Some agents keep their own memory across sessions. That memory helps that agent, for that user. Other agents cannot read it, reviewers never see it, and it does not know which commit a memory was true at.
 
 Alethic is shared, and memory that stays private to one agent belongs in `.alethic/local/`, which is never committed and never read by `resume`.
+
+## Shared memory servers
+
+A growing category of tools gives several agents one memory: a local service or plugin, reached over MCP or agent-specific hooks, that captures observations and session summaries and retrieves them by search. Some add explicit handoff notes with open questions and next steps. These do survive a switch between agents, which private memory does not.
+
+The differences are where the memory lives and what it is checked against. It is usually kept in the service's own store rather than in the repository, so it is not reviewed in pull requests and does not branch or merge with the code. Retrieval is by relevance, and the memory is rarely tied to the code version it described, so nothing flags a memory whose code has since changed.
+
+Alethic is a smaller, stricter thing: a few record types, committed with the code, validated before use, anchored to content fingerprints, and compiled deterministically. It does not search or summarize. A team can use both: a memory server for recall across a person's sessions, and Alethic for the task state that should travel with the branch.
 
 ## Instruction files
 

@@ -17,6 +17,7 @@ import {
   changedTreeEntries,
   listSources,
   listTreeEntries,
+  pathsDifferingFrom,
   readBlobs,
   type TreeEntry,
   type WorkSource,
@@ -119,9 +120,20 @@ export async function gatherConcurrentWork(
   const read = await mapPooled(sources, PARALLEL_SOURCES, async (source) => {
     const base = await mergeBase(root, head, source.tip);
     if (!base) return { source, unrelated: true as const };
-    return source.worktree
+    const read = source.worktree
       ? readWorktree(source, source.worktree, base)
       : readBranch(root, source, base);
+    // Changed since the split, but also different from what is here: a squash-merged or
+    // cherry-picked branch is not an ancestor of HEAD, yet its content already is.
+    const [pending, differing] = await Promise.all([
+      read,
+      pathsDifferingFrom(
+        root,
+        head,
+        source.worktree ? { worktree: source.worktree } : { tip: source.tip },
+      ),
+    ]);
+    return notHere(pending, differing);
   });
   const unrelated = read.flatMap((entry) => ("unrelated" in entry ? [entry.source.name] : []));
   const pending = read.filter((entry): entry is PendingSource => !("unrelated" in entry));
@@ -177,6 +189,24 @@ export async function gatherConcurrentWork(
     sources: results.sort((a, b) => a.name.localeCompare(b.name)),
     unrelated: unrelated.sort(),
     omitted,
+  };
+}
+
+/** Keeps only the changes whose content differs from HEAD's. */
+function notHere(pending: PendingSource, differing: ReadonlySet<string>): PendingSource {
+  const records = pending.store.records.filter((record) => differing.has(record.file));
+  const findings = pending.store.findings.filter(
+    (finding) => finding.file === undefined || differing.has(finding.file),
+  );
+  return {
+    ...pending,
+    store: { records, findings },
+    blobs: pending.blobs.filter((entry) => differing.has(entry.file)),
+    changedPaths: pending.changedPaths.filter((file) => differing.has(file)),
+    uncommitted:
+      pending.uncommitted &&
+      (records.some((record) => pending.uncommittedFiles.has(record.file)) ||
+        pending.changedPaths.some((file) => differing.has(file))),
   };
 }
 

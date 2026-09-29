@@ -335,6 +335,53 @@ describe("concurrent work on other branches", () => {
     expect((await statusJson(repo)).concurrent.sources).toHaveLength(5);
   });
 
+  it("leaves out work that is already here: squash merges, cherry-picks, identical records", async () => {
+    const repo = await withOurTask();
+    const fact = async (body: string) =>
+      expectOk(
+        await cli(
+          [
+            "knowledge",
+            "add",
+            "--category",
+            "gotcha",
+            "--body",
+            body,
+            "--paths",
+            "apps/api/auth/refresh.ts",
+          ],
+          as(repo, "claude-code", AT),
+        ),
+      );
+
+    await onBranch(repo, "feat/squashed", async () => {
+      repo.write("apps/api/auth/squashed.ts", "export const squashed = 1;\n");
+      await fact("Squashed fact");
+    });
+    await repo.run(["merge", "--squash", "-q", "feat/squashed"]);
+    await repo.commitAll("Squash feat/squashed");
+
+    await onBranch(repo, "feat/picked", async () => {
+      repo.write("apps/api/auth/picked.ts", "export const picked = 1;\n");
+      await fact("Picked fact");
+    });
+    await repo.run(["cherry-pick", "feat/picked"]);
+    expect(section(await resume(repo))).toBe("");
+    expect((await statusJson(repo)).concurrent.sources).toEqual([]);
+
+    // The same record written on both sides, plus one change that is only on the branch.
+    await onBranch(repo, "feat/twin", async () => {
+      await fact("Shared fact");
+      repo.write("apps/api/auth/session.ts", "export function createSession() { return 3; }\n");
+    });
+    await fact("Shared fact");
+    await repo.commitAll("Record the shared fact here too");
+    const notes = section(await resume(repo));
+    expect(notes).toContain("feat/twin (last commit");
+    expect(notes).toContain("changed 1 file in your scope (apps/api/auth/session.ts) since");
+    expect(notes).not.toContain("Shared fact");
+  });
+
   it("skips branches that share no history with this one", async () => {
     const repo = await withOurTask();
     await repo.run(["checkout", "-q", "--orphan", "gh-pages"]);

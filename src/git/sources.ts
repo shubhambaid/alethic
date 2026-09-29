@@ -306,6 +306,45 @@ export async function worktreeChanges(
 }
 
 /**
+ * Every path whose content at `tip` (a commit) or in `worktree` (its working tree, including
+ * untracked files) differs from `commit`. Used to drop work that is already here, such as a
+ * branch that was squash-merged or cherry-picked, which merge-base ancestry cannot see.
+ */
+export async function pathsDifferingFrom(
+  root: string,
+  commit: string,
+  other: { tip: string } | { worktree: string },
+): Promise<Set<string>> {
+  const differing = new Set<string>();
+  const add = (output: string) => {
+    for (const file of output.split("\0")) if (file) differing.add(file);
+  };
+  if ("tip" in other) {
+    const result = await git(root, [
+      "diff",
+      "--name-only",
+      "-z",
+      "--no-renames",
+      commit,
+      other.tip,
+    ]);
+    if (result.code !== 0) throw new GitError(`git diff failed: ${result.stderr.trim()}`);
+    add(result.stdout);
+    return differing;
+  }
+  const [diff, untracked] = await Promise.all([
+    git(other.worktree, ["diff", "--name-only", "-z", "--no-renames", commit]),
+    git(other.worktree, ["ls-files", "--others", "--exclude-standard", "-z"]),
+  ]);
+  for (const result of [diff, untracked]) {
+    if (result.code !== 0)
+      throw new GitError(`git in ${other.worktree} failed: ${result.stderr.trim()}`);
+    add(result.stdout);
+  }
+  return differing;
+}
+
+/**
  * Contents of many blobs from one `git cat-file --batch` process. Missing objects are left out
  * of the result. Git processes dominate command time, so reading a branch's records one process
  * per file would not scale (docs/performance.md).

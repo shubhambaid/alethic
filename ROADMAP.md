@@ -24,6 +24,10 @@ Alethic is pre-release. This page lists what exists, what is needed before a fir
 - **Evaluation kit.** Reproducible handoff scenarios in three conditions and a protocol ([evaluation](docs/evaluation.md)).
 - **Dashboard.** A read-only local view of sessions, records, handoffs, briefings, and health ([dashboard](docs/dashboard.md)).
 
+## Done (after the improvement plan)
+
+- **Concurrent-work notices.** `resume` reports other local branches and worktrees that changed files in the task's scope, or recorded tasks, decisions, and knowledge about it, since they split; uncommitted records in other worktrees count and are labeled. `status --all-branches` lists every source, and `show --ref` reads a cited record. Records from other sources pass the same checks with this checkout's privacy settings (spec §12.1).
+
 ## Before the first release
 
 - **Publish** to npm as `alethic` (unclaimed when checked on 2026-09-29), with the `alethic` command.
@@ -34,7 +38,8 @@ Alethic is pre-release. This page lists what exists, what is needed before a fir
 
 ## Next
 
-- **Cross-worktree discovery**: read records from other refs (`--ref`, `status --all-branches`), so concurrent worktrees can find each other's tasks without checking out unfinished work.
+- **Remote branches in concurrent-work notices**: an opt-in `--remotes` to include remote-tracking branches from the last fetch (teammates' and cloud agents' pushed branches), still without network access.
+- **Concurrent work in the dashboard**: show other branches and worktrees next to this checkout's sessions.
 - **`ci-verified`**: verify receipts against GitHub Actions artifact attestations when `trust.ci_provenance: github-attestation` is configured. Until then `ci-verified` cannot be produced, by design (spec §8).
 - **Authenticated approval**: a verifiable reviewer identity bound to a claim digest, distinct from `--human` attribution (spec §8.1).
 - **Briefing-delivery events**: opt-in, versioned records of what an agent was given, labeled as delivered rather than read, for the dashboard.

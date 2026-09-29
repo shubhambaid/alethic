@@ -33,3 +33,16 @@ No persistent cache or index was added. Revisit if a real ledger shows either of
 
 - many distinct commits across receipts, so memoization no longer collapses the Git queries (batching them through `git cat-file --batch-check` is the next step);
 - allocation time growing with thousands of items in one section, since each upgrade re-renders the content (incremental length accounting is the next step).
+
+## Concurrent-work notices
+
+`resume` also reads other local branches and worktrees (spec §12.1). Each source costs a few short Git processes: a merge base, a diff of its record directories, and a diff of its code paths for a branch; for a worktree, three reads of its record directories' status plus its changed paths. The changed record files of every branch are read through one `git cat-file --batch` process, worktree record files are read from disk without hashing the rest of the ledger, and sources are read four at a time.
+
+Measured on 2026-09-29, Apple M4 Pro, Node v26.10.0, git 2.50.1, with the ledger above plus 25 branches (each changing one file and adding two decisions in scope) and 2 worktrees (each with one uncommitted decision and an uncommitted edit):
+
+| Ledger | `resume --no-concurrent` | `resume` | `status --all-branches` | Deterministic |
+|---|---|---|---|---|
+| 300 decisions, 27 sources | 0.35 s | 0.73 s | 0.64 s | yes |
+| 2000 decisions, 27 sources | 1.24 s | 1.73 s | 0.92 s | yes |
+
+The cost depends on the number of sources (at most 25 branches and worktrees are examined) and on how much each changed, not on the size of the ledger. `--no-concurrent` skips it.

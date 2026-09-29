@@ -5,7 +5,8 @@ The command is `alethic` (package `alethic`). Every command works without a mode
 ```console
 alethic init [--name <name>]
 alethic validate [--json] [--strict]
-alethic status [--json]
+alethic status [--json] [--all-branches]
+alethic session new
 
 alethic task start "<intent>" [--paths <globs...>] [--next <text>] [--human <name>]
 alethic task claim <id> [--force]
@@ -23,13 +24,15 @@ alethic checkpoint create [--task <id>] [--done <text>]... [--failed "<approach>
 alethic checkpoint list [--task <id>] [--json]
 alethic checkpoint show <id> [--json]
 
-alethic resume [--task <id>] [--target codex|claude-code|gemini|generic] [--budget <tokens>] [--format md|json]
+alethic resume [--task <id>] [--agent <name>] [--target codex|claude-code|gemini|generic] [--budget <tokens>] [--format md|json] [--no-concurrent]
+alethic show <id> [--ref <branch or worktree>] [--json]
 
 alethic verify <id> [--human <name> [--note <text>]] [--receipt <id>]...
 alethic doctor [--fix] [--strict] [--json]
 
 alethic render agents-md|claude-md|gemini-md [--write | --check]
 alethic render pr-summary [--task <id>]
+alethic dashboard [--port <n>] [--host <address>] [--snapshot <file>]
 alethic mcp
 ```
 
@@ -186,6 +189,7 @@ Compiles a briefing for the next agent from records and the current Git state. S
 1. **Goal**: the task's intent, status, and owner.
 2. **Current repository state**: branch, HEAD, dirty, changes since base, and how far HEAD has moved since the latest checkpoint, including whether any code outside `.alethic/` changed.
    - **Integrity warnings**, only when needed: records withheld because they failed validation (named by file and finding code only), files that could not be loaded, references that cannot be followed, and contradictory accepted decisions that touch the task. Always shown in full, at most five items of each kind.
+   - **Concurrent work on other branches**, only when needed: other local branches and worktrees that changed files in the task's scope, or recorded tasks, decisions, knowledge, or checkpoints about it, since they split from this branch (spec §12.1). Always shown in full but capped: at most three sources, two record lines, and a pointer to `alethic status --all-branches` for the rest.
 3. **Relevant architecture and decisions**: decisions and knowledge. Decisions in a contradiction are marked `⚠ disputed`.
 4. **Files changed or likely relevant**: task scope, changes on this branch, and paths changed at the latest checkpoint.
 5. **Verified behavior and checks run**: receipts, noting whether they ran on HEAD, on a commit with the same code, or on code that has changed since.
@@ -198,8 +202,10 @@ Options:
 - `--task <id>`: defaults to the active task owned by `--agent` or `ALETHIC_AGENT`, else the single open task on the current branch, else the single open task.
 - `--budget <tokens>`: an **approximate** size, estimated as characters / 4 (default `defaults.budget`). Real tokenizer counts vary by model. Goal, repository state, and next safe action are always included in full. Other items shrink to one-line summaries, then to `N more: [ids]` pointers, which cite at most five records and count the rest. Every non-empty section keeps at least its top item before any section gets a second one, and a lower-ranked item is never shown while a higher-ranked item in the same section is hidden. When space is short, items are kept in this order: failed approaches, open questions, checks, decisions and knowledge, then files.
 - `--target`: `codex`, `claude-code`, `gemini`, or `generic`. Only the header and footer change; the content is identical for every target.
-- `--format json`: `{ task, target, budget, tokens, overBudget, report, sections[{ key, title, items[{ key, level, text, record?, reasons?, score?, freshness?, applicability? }] }], skipped[{ id, reason }] }`. This is the compiler's inspectable result: every item is listed with the level it got (`full`, `short`, or `pointer` when it was collapsed into an "N more" line), and items from records say which record, how it was found (`reasons`), its score, and its derived freshness. `skipped` lists retired records that matched but were left out. `report` attributes the approximate tokens: `frame`, `required` (headings and sections that are never shortened), `optional`, and `pointers`, with the overflow `policy`.
-- Overflow: goal, repository state, integrity warnings, and next safe action are never shortened, even when they alone exceed the budget. The command still prints the briefing and warns on stderr, saying how much the mandatory content and the pointer lines take.
+- `--agent <name>`: the agent reading the briefing, used to find its active task (default `ALETHIC_AGENT`).
+- `--no-concurrent`: leave out work on other branches and worktrees, and skip reading them.
+- `--format json`: `{ task, target, budget, tokens, overBudget, report, sections[{ key, title, items[{ key, level, text, record?, reasons?, score?, freshness?, applicability? }] }], skipped[{ id, reason }], concurrent[{ source, branch?, worktree?, committedAt?, base, uncommitted, paths[], records[{ id, kind, uncommitted }], withheld }] }`. This is the compiler's inspectable result: every item is listed with the level it got (`full`, `short`, or `pointer` when it was collapsed into an "N more" line), and items from records say which record, how it was found (`reasons`), its score, and its derived freshness. `skipped` lists retired records that matched but were left out. `report` attributes the approximate tokens: `frame`, `required` (headings and sections that are never shortened), `optional`, and `pointers`, with the overflow `policy`.
+- Overflow: goal, repository state, integrity warnings, concurrent work, and next safe action are never shortened, even when they alone exceed the budget. The command still prints the briefing and warns on stderr, saying how much the mandatory content and the pointer lines take.
 - Every collapsed record can be read with `alethic show <id>`, and the briefing's footer says so.
 
 How records are chosen (deterministic, no embeddings):
@@ -211,7 +217,7 @@ How records are chosen (deterministic, no embeddings):
 
 They are ranked by how they were found (explicit links first), trust level (`ci-reported` counts the same as `agent-reported`), accepted status, whether their anchor is on this line of history, and, for receipts, whether the code is unchanged since they ran; then recency and id. Staleness never lowers a record's rank: a record that may be stale is shown with its warning rather than hidden. Within their section, records that may be stale are listed first, so their warnings survive small budgets.
 
-Every bullet ends with its source: a record id like `[dec-auth-session-invalidation]`, `(receipt rcpt-…)`, or `(commit abc1234)`. Claims that are not `human-confirmed` or `ci-verified` are marked `⚠ unverified`. Records whose direct evidence changed by any amount are marked `⚠ may be stale: <reason>`, with `(small change)` when the change is within `staleness.changed_lines_threshold`. Records whose applicability cannot be established are marked `⚠ applicability unknown: <reason>`, and records whose cited files are unchanged while nearby files matched by a scope glob changed get `ℹ nearby files changed, cited files did not: <reason>` (spec §9).
+Every bullet ends with its source: a record id like `[dec-auth-session-invalidation]`, a record on another branch like `[dec-auth-refresh-shape on feat/token-refresh]`, `(receipt rcpt-…)`, or `(commit abc1234)`. Records from other branches carry trust markers but no freshness markers, which describe this checkout's code. Claims that are not `human-confirmed` or `ci-verified` are marked `⚠ unverified`. Records whose direct evidence changed by any amount are marked `⚠ may be stale: <reason>`, with `(small change)` when the change is within `staleness.changed_lines_threshold`. Records whose applicability cannot be established are marked `⚠ applicability unknown: <reason>`, and records whose cited files are unchanged while nearby files matched by a scope glob changed get `ℹ nearby files changed, cited files did not: <reason>` (spec §9).
 
 ## `alethic show`
 
@@ -236,6 +242,7 @@ id: dec-auth-session-store
 - Record-level findings, such as an outdated confirmation, are listed before the record.
 - `--json` prints `{ id, kind, file, revision, record, derived: { staleness, confirmation, receipt? }, findings }`.
 - Records that failed validation are refused (exit 2), so a secret in a hand-edited record is never printed.
+- `--ref <branch or worktree>` reads the record from another local branch, or from another worktree of this clone (by path, or by the branch checked out there), as a concurrent-work notice cites it. It passes the same checks with this checkout's privacy settings. Freshness and applicability are not judged, since they describe this checkout's code; `--json` adds `source { name, branch?, tip, worktree? }` and `derived` has only `confirmation`.
 
 ## `alethic render`
 
@@ -385,6 +392,8 @@ Scopes overlap when they share a pattern, when one names a path the other matche
 Shows the branch, HEAD, and dirty state (changes under `.alethic/` don't count as dirty), record counts, active tasks with their owners, leases, next actions, and latest checkpoints, other open tasks, and a validation summary. It always exits 0 once Alethic is initialized; run `validate` for details.
 
 `--json` prints `{ project, git, counts, activeTasks[], openTasks[], validation }`.
+
+`--all-branches` adds work on other local branches and worktrees since each split from this branch (spec §12.1), whether or not it touches a task: changed files, tasks, decisions, knowledge, counts of checkpoints and receipts, whether anything in a worktree is uncommitted, and how many records there failed validation. Branches merged into HEAD are not listed; branches with no shared history are named as skipped. In JSON: `concurrent: { sources[{ source, branch, worktree, committedAt, tip, base, uncommitted, changedPaths[], tasks[], decisions[], knowledge[], checkpoints, receipts, withheld }], unrelated[], omitted }`.
 
 ## Environment variables
 

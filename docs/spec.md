@@ -36,7 +36,7 @@ Alethic stores that context as small, typed, reviewable records inside the repos
 - Orchestrating agents: scheduling, running, or supervising them, or executing work on their behalf. The one command that runs anything is `alethic receipt run`, which runs a single command the caller names, in the foreground, only to observe its result and the code it ran on (§6.5). It does not schedule, retry, or supervise.
 - Hosted accounts, billing, sync services, or a central database.
 - Inferring "truth" from agent output automatically. Alethic records who claimed what, with what evidence, and at what trust level. It never upgrades a claim on its own.
-- Semantic/embedding search. Retrieval is deterministic.
+- Model-ranked retrieval in briefings. `resume` is deterministic. `alethic search` may rank by embeddings when asked, with vectors kept outside the repository (see [search](search.md)).
 
 ## 4. File layout
 
@@ -367,6 +367,11 @@ limits:
   max_receipt_files: 20000  # files digested before and after `receipt run` (§6.5)
 trust:
   ci_provenance: none       # none | github-attestation (§8)
+search:
+  semantic: false           # true: `alethic search` also ranks by meaning (see docs/search.md)
+  model: onnx-community/embeddinggemma-300m-ONNX
+  dimensions: 256           # Matryoshka size: 768, 512, 256, or 128 for EmbeddingGemma
+  dtype: q8                 # ONNX weight precision
 ```
 
 ## 8. Provenance and trust levels

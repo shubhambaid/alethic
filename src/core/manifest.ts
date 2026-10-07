@@ -20,6 +20,7 @@ export interface Manifest {
     max_receipt_files: number;
   };
   trust: { ci_provenance: "none" | "github-attestation" };
+  search: { semantic: boolean; model: string; dimensions: number; dtype: string };
 }
 
 export interface RawManifest {
@@ -29,6 +30,7 @@ export interface RawManifest {
   staleness?: Partial<Manifest["staleness"]>;
   limits?: Partial<Manifest["limits"]>;
   trust?: Partial<Manifest["trust"]>;
+  search?: Partial<Manifest["search"]>;
 }
 
 export const MANIFEST_DEFAULTS: Omit<Manifest, "format_version" | "project"> = {
@@ -37,6 +39,12 @@ export const MANIFEST_DEFAULTS: Omit<Manifest, "format_version" | "project"> = {
   staleness: { changed_lines_threshold: 20 },
   limits: { max_glob_matches: 2000, max_fingerprints_per_record: 50, max_receipt_files: 20000 },
   trust: { ci_provenance: "none" },
+  search: {
+    semantic: false,
+    model: "onnx-community/embeddinggemma-300m-ONNX",
+    dimensions: 256,
+    dtype: "q8",
+  },
 };
 
 /** Fills in defaults for a schema-valid manifest. */
@@ -49,6 +57,7 @@ export function resolveManifest(raw: RawManifest): Manifest {
     staleness: { ...MANIFEST_DEFAULTS.staleness, ...raw.staleness },
     limits: { ...MANIFEST_DEFAULTS.limits, ...raw.limits },
     trust: { ...MANIFEST_DEFAULTS.trust, ...raw.trust },
+    search: { ...MANIFEST_DEFAULTS.search, ...raw.search },
   };
 }
 

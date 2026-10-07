@@ -17,6 +17,7 @@ Alethic records that as reviewable files committed with the code, and compiles t
 - **Aware of parallel work.** Agents in other worktrees and branches of the same clone are often changing the code you depend on. The briefing names the ones that changed files in your task's scope, or recorded decisions about it, since your branches split, including records not committed yet. It is read locally from Git and the worktrees, with your privacy settings applied. `alethic status --all-branches` lists all of it.
 - **Honest trust labels.** Agent claims are marked *unverified*. A human confirmation is shown as an attribution ("confirmed by Priya, as recorded by codex; not authenticated"), bound to the exact text confirmed, and flagged when that text changes. Setting `CI=true` does not make anything verified. Labels describe provenance, not identity: see the [trust boundary](docs/spec.md#81-trust-boundary).
 - **Agent-neutral.** A CLI any agent can run, short instruction blocks for `AGENTS.md`, `CLAUDE.md`, and `GEMINI.md`, and an MCP server.
+- **Searchable.** `alethic search` finds what nobody handed you: keywords by default, and optionally meaning, using a local [EmbeddingGemma](docs/search.md) model. Results carry freshness and trust, and vectors never enter the repository.
 - **Private by default.** Records are scanned for credentials before they are written, and transcripts and customer data do not belong in them.
 
 ## See a handoff
@@ -109,6 +110,7 @@ Every record carries a confidence label, an anchor to the code it describes, and
 | `checkpoint create / list / show` | Hand off unfinished work |
 | `resume` | Compile a cited, budgeted briefing for the next agent |
 | `show` | Read one record with its derived freshness and trust |
+| `search` | Find records by keywords, or by meaning with a local embedding model ([search](docs/search.md)) |
 | `verify`, `doctor` | Re-anchor checked claims; find stale records and conflicts |
 | `render` | Instruction-file blocks and pull request summaries |
 | `mcp` | Serve the same operations over MCP (stdio) |
@@ -129,6 +131,7 @@ Full reference: [docs/cli.md](docs/cli.md).
 - [CLI reference](docs/cli.md)
 - [Architecture](docs/architecture.md)
 - [Why not just AGENTS.md?](docs/why-not-agents-md.md)
+- [Search](docs/search.md): keyword and optional EmbeddingGemma search over the ledger
 - [How Alethic compares](docs/comparison.md)
 - [Briefing performance on large ledgers](docs/performance.md)
 - [Evaluating handoffs in real agent sessions](docs/evaluation.md): the protocol, and what has not been verified yet

@@ -72,6 +72,34 @@
         }
       },
       "additionalProperties": false
+    },
+    "search": {
+      "type": "object",
+      "properties": {
+        "semantic": {
+          "description": "Run `alethic search` with embeddings by default. Needs @huggingface/transformers and downloads the model once; keyword search needs neither.",
+          "type": "boolean"
+        },
+        "model": {
+          "description": "Embedding model for semantic search (default: the ONNX export of EmbeddingGemma 300M).",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "dimensions": {
+          "description": "Vector length. EmbeddingGemma is Matryoshka-trained, so 768, 512, 256, or 128 all work; smaller is faster and uses less cache.",
+          "type": "integer",
+          "minimum": 32,
+          "maximum": 4096
+        },
+        "dtype": {
+          "description": "ONNX weight precision, e.g. q8, q4, fp32.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 20
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false

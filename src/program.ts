@@ -15,6 +15,7 @@ import { mcpCommand } from "./commands/mcp.js";
 import { receiptAddCommand, receiptRunCommand } from "./commands/receipt.js";
 import { renderCommand } from "./commands/render.js";
 import { resumeCommand } from "./commands/resume.js";
+import { searchCommand } from "./commands/search.js";
 import { sessionNewCommand } from "./commands/session.js";
 import { showCommand } from "./commands/show.js";
 import { statusCommand } from "./commands/status.js";
@@ -368,6 +369,24 @@ export async function runCli(argv: readonly string[], io: Io): Promise<number> {
     .option("--ref <branch>", "read the record from another local branch or worktree path")
     .action(async (id: string, options, command: Command) => {
       exitCode = await showCommand(ioFor(command), id, options);
+    });
+
+  program
+    .command("search")
+    .description("Find records by keywords, and optionally by meaning (local embeddings)")
+    .argument("<query>", "what to look for, in plain words")
+    .option(
+      "--kind <kind>",
+      "only task, decision, knowledge, checkpoint, or receipt (repeatable)",
+      collect,
+      [],
+    )
+    .option("--limit <n>", "most results to show (default: 8, at most 50)")
+    .option("--semantic", "also rank by meaning with a local embedding model; fail if unavailable")
+    .option("--no-semantic", "keywords only, even if the manifest enables semantic search")
+    .option("--json", JSON_HELP)
+    .action(async (query: string, options, command: Command) => {
+      exitCode = await searchCommand(ioFor(command), query, options);
     });
 
   program

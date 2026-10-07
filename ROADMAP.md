@@ -28,8 +28,13 @@ Alethic is pre-release. This page lists what exists, what is needed before a fir
 
 - **Concurrent-work notices.** `resume` reports other local branches and worktrees that changed files in the task's scope, or recorded tasks, decisions, and knowledge about it, since they split; uncommitted records in other worktrees count and are labeled. `status --all-branches` lists every source, and `show --ref` reads a cited record. Records from other sources pass the same checks with this checkout's privacy settings (spec §12.1).
 
+## Done (search)
+
+- **`alethic search`** and an MCP `search` tool: BM25 over validated records, plus opt-in semantic ranking with local EmbeddingGemma embeddings (Matryoshka dimensions, task prompts, vectors cached inside the Git directory), fused by reciprocal rank. `resume` stays deterministic. See [docs/search.md](docs/search.md).
+
 ## Before the first release
 
+- **Run semantic search against the real EmbeddingGemma weights**, which has not been possible so far (the model host was unreachable where it was written), and check ranking quality on a real ledger.
 - **Publish** to npm as `alethic` (unclaimed when checked on 2026-09-29), with the `alethic` command.
 - **Run the handoff evaluation in live sessions** of Codex, Claude Code, and Gemini CLI, following [docs/evaluation.md](docs/evaluation.md), and publish the results, including cases where a handoff file was enough. This also verifies the adapters, which are so far checked only against vendor documentation and the official MCP client.
 - **Antigravity setup**, verified the same way.
@@ -45,6 +50,7 @@ Alethic is pre-release. This page lists what exists, what is needed before a fir
 - **Briefing-delivery events**: opt-in, versioned records of what an agent was given, labeled as delivered rather than read, for the dashboard.
 - **Historical dashboard views** of the ledger at earlier commits.
 - **Retiring old records**: archive closed tasks and their checkpoints so long-lived repositories stay fast to load.
+- **Related-record hints**: a "see also" line in `resume` and `doctor` that points at `search` results, and a `doctor` check that uses meaning to find near-duplicate decisions with different topics.
 - **Optional tokenizer-accurate budgets**, keeping the characters / 4 estimate as the deterministic default.
 
 ## Not planned

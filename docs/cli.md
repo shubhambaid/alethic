@@ -208,7 +208,7 @@ Options:
 - Overflow: goal, repository state, integrity warnings, concurrent work, and next safe action are never shortened, even when they alone exceed the budget. The command still prints the briefing and warns on stderr, saying how much the mandatory content and the pointer lines take.
 - Every collapsed record can be read with `alethic show <id>`, and the briefing's footer says so.
 
-How records are chosen (deterministic, no embeddings):
+How records are chosen (deterministic, no embeddings; to look for records the briefing did not choose, use [`alethic search`](#alethic-search)):
 
 - records linked from the task or its checkpoints, and records whose `links` name the task;
 - receipts cited by the task's checkpoints or by chosen decisions and knowledge, receipts recorded at HEAD since the task started, and receipts recorded on this line of history since the latest checkpoint (the ones the next checkpoint would attach);
@@ -243,6 +243,20 @@ id: dec-auth-session-store
 - `--json` prints `{ id, kind, file, revision, record, derived: { staleness, confirmation, receipt? }, findings }`.
 - Records that failed validation are refused (exit 2), so a secret in a hand-edited record is never printed.
 - `--ref <branch or worktree>` reads the record from another local branch, or from another worktree of this clone (by path, or by the branch checked out there), as a concurrent-work notice cites it. It passes the same checks with this checkout's privacy settings. Freshness and applicability are not judged, since they describe this checkout's code; `--json` adds `source { name, branch?, tip, worktree? }` and `derived` has only `confirmation`.
+
+## `alethic search`
+
+`alethic search <query> [--kind <kind>]... [--limit <n>] [--semantic | --no-semantic] [--json]`
+
+Finds records by keywords (BM25), and by meaning when semantic search is on, with the two rankings fused by reciprocal rank. Design, model, and setup: [search.md](search.md).
+
+- `--kind`: only `task`, `decision`, `knowledge`, `checkpoint`, or `receipt`; repeatable.
+- `--limit <n>`: default 8, at most 50.
+- `--semantic`: also rank by meaning with a local embedding model, and fail if it cannot run. `--no-semantic`: keywords only. Without either, `search.semantic` in the manifest decides, and a model that cannot run falls back to keywords with a note.
+- `--json`: `{ query, mode: "keyword" | "hybrid", embedder?, searched, withheld, results[{ id, kind, status, file, summary, matched[], score, keywordRank?, meaningRank?, similarity?, freshness, confidence }] }`.
+- Only records that pass the shared assessment are searched; `withheld` counts those that failed it. Nothing is written.
+- Vectors are cached in the Git directory (`alethic/embeddings.json`), never in the working tree.
+- `ALETHIC_EMBEDDER_MODULE`: a module that replaces the built-in embedder (see [search.md](search.md#bring-your-own-embedder)).
 
 ## `alethic render`
 
@@ -288,6 +302,7 @@ Runs a Model Context Protocol server over stdio: newline-delimited JSON-RPC 2.0,
 |---|---|
 | `resume` | `resume` (Markdown briefing) |
 | `status` | `status --json` |
+| `search` | `search --json`, with `kind` as an array of kinds |
 | `validate` | `validate --json`. Findings are a normal result, not a tool error. |
 | `task_start` | `task start` |
 | `task_claim` | `task claim` |
@@ -403,6 +418,7 @@ Shows the branch, HEAD, and dirty state (changes under `.alethic/` don't count a
 | `ALETHIC_SESSION` | The session of that agent, recorded in `created_by.session` and `owner.session`, so two runs of the same tool are different writers. `alethic session new` prints a fresh id. `alethic mcp` generates one per connection when unset. |
 | `ALETHIC_MODEL` | The model behind the session, recorded in `created_by.model`. Only set it when you know it; nothing guesses it. |
 | `ALETHIC_NOW` | Fixed current time (for example `2026-09-13T21:00:00Z`), for reproducible tests and demos. |
+| `ALETHIC_EMBEDDER_MODULE` | A JavaScript module whose default export builds the embedder `search` uses, instead of the built-in Transformers.js one. |
 | `ALETHIC_DEBUG` | Print stack traces for unexpected failures. |
 | `CI` | When `true` (or `1`) and the tree is clean, receipts are labeled `ci-reported`. |
 | `CLAUDE_PROJECT_DIR` | Set by Claude Code for the MCP servers it starts. `alethic mcp` uses it as the repository when `-C` is not given. |

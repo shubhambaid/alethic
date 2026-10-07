@@ -36,6 +36,7 @@ describe("alethic mcp", () => {
     expect(tools.map((tool) => tool.name)).toEqual([
       "resume",
       "status",
+      "search",
       "validate",
       "task_start",
       "task_claim",

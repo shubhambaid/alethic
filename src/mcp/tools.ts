@@ -123,6 +123,42 @@ export const TOOLS: readonly ToolSpec[] = [
     argv: async (a) => ["status", "--json", ...(a.all_branches === true ? ["--all-branches"] : [])],
   },
   {
+    name: "search",
+    title: "Search records",
+    description:
+      "Find decisions, knowledge, checkpoints (including failed approaches), tasks, and receipts by words, or by meaning when semantic search is enabled. Call before starting work that shares no files with your task, to learn whether someone already decided or tried it. Results carry freshness and trust; read one in full with the show tool or `alethic show`.",
+    inputSchema: object(
+      {
+        query: text("what to look for, in plain words", 500),
+        kind: {
+          type: "array",
+          items: {
+            type: "string",
+            enum: ["task", "decision", "knowledge", "checkpoint", "receipt"],
+          },
+          maxItems: 5,
+          description: "only these record kinds",
+        },
+        limit: {
+          type: "integer",
+          minimum: 1,
+          maximum: 50,
+          description: "most results (default 8)",
+        },
+      },
+      ["query"],
+    ),
+    annotations: READ,
+    argv: async (a) => [
+      "search",
+      "--json",
+      ...many("kind", a.kind),
+      ...opt("limit", a.limit),
+      "--",
+      String(a.query),
+    ],
+  },
+  {
     name: "validate",
     title: "Validate records",
     description:

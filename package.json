@@ -35,6 +35,14 @@
     "picomatch": "^4.0.7",
     "yaml": "^2.9.1"
   },
+  "peerDependencies": {
+    "@huggingface/transformers": ">=3.7.0"
+  },
+  "peerDependenciesMeta": {
+    "@huggingface/transformers": {
+      "optional": true
+    }
+  },
   "devDependencies": {
     "@biomejs/biome": "^2.5.13",
     "@modelcontextprotocol/sdk": "1.30.0",
